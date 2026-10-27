@@ -5,6 +5,7 @@ import { AppError } from './shared/errors/AppError.js';
 import { prisma } from './infrastructure/database/prismaClient.js';
 import { redisClient } from './infrastructure/cache/redisCache.js';
 import { rabbitMQClient } from './infrastructure/messaging/rabbitmqClient.js';
+import { orderRoutes } from './presentation/routes/orderRoutes.js';
 
 dotenv.config();
 
@@ -13,13 +14,13 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// API Routes
+app.use('/api/v1/orders', orderRoutes);
+
 // Health Check Route
 app.get('/health', async (_req: Request, res: Response, next) => {
   try {
-    // Database connection test
     await prisma.$queryRaw`SELECT 1`;
-    
-    // Testing the connection to Redis
     const redisStatus = redisClient.status;
 
     res.status(200).json({ 
