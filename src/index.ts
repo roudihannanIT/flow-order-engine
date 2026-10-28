@@ -6,6 +6,7 @@ import { prisma } from './infrastructure/database/prismaClient.js';
 import { redisClient } from './infrastructure/cache/redisCache.js';
 import { rabbitMQClient } from './infrastructure/messaging/rabbitmqClient.js';
 import { orderRoutes } from './presentation/routes/orderRoutes.js';
+import { OrderConsumer } from './infrastructure/messaging/OrderConsumer.js';
 
 dotenv.config();
 
@@ -48,6 +49,9 @@ app.listen(PORT, async () => {
 
   try {
     await rabbitMQClient.connect();
+
+    // Activating the consumer to listen for events as soon as the RabbitMQ connection is successfully established
+    await OrderConsumer.consumeOrderCreated();
   } catch (error) {
     console.error('Failed to initialize RabbitMQ during startup:', error);
   }
