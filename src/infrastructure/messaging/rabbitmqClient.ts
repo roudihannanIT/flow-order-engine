@@ -9,24 +9,31 @@ class RabbitMQClient {
   private readonly url: string;
 
   constructor() {
-    this.url = process.env.RABBITMQ_URL || 'amqp://admin:password123@localhost:5672';
+    this.url = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
   }
 
-  public async connect(): Promise<void> {
-    try {
-      this.connection = await amqp.connect(this.url);
-      this.channel = await this.connection.createChannel();
-      
-      console.log('Connected to RabbitMQ successfully');
+  public async connect(retries = 5, delay = 3000): Promise<void> {
+    for (let i = 1; i <= retries; i++) {
+      try {
+        this.connection = await amqp.connect(this.url);
+        this.channel = await this.connection.createChannel();
+        
+        console.log('Connected to RabbitMQ successfully');
 
-      this.connection.on('close', (error: unknown) => {
-        console.error('RabbitMQ connection closed:', error);
-        this.channel = null;
-        this.connection = null;
-      });
-    } catch (error) {
-      console.error('Failed to connect to RabbitMQ:', error);
-      throw error;
+        this.connection.on('close', (error: unknown) => {
+          console.error('RabbitMQ connection closed:', error);
+          this.channel = null;
+          this.connection = null;
+        });
+        return;
+      } catch (error) {
+        console.warn(`Attempt ${i}/${retries} failed to connect to RabbitMQ. Retrying in ${delay / 1000}s...`);
+        if (i === retries) {
+          console.error('Failed to connect to RabbitMQ after maximum retries.');
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
     }
   }
 
