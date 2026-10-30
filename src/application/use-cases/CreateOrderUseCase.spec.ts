@@ -49,12 +49,13 @@ test('CreateOrderUseCase: should successfully create a new order when idempotenc
     items: [{ productId: 'prod_1', quantity: 3, price: 50 }],
   };
 
-  const result = await createOrderUseCase.execute(orderData);
+  const { order, created } = await createOrderUseCase.execute(orderData);
 
-  assert.ok(result);
-  assert.strictEqual(result.customerId, 'cust_unit_test');
-  assert.strictEqual(result.totalAmount, 150);
-  assert.strictEqual(result.status, OrderStatus.PENDING);
+  assert.strictEqual(created, true);
+  assert.ok(order);
+  assert.strictEqual(order.customerId, 'cust_unit_test');
+  assert.strictEqual(order.totalAmount, 150);
+  assert.strictEqual(order.status, OrderStatus.PENDING);
 });
 
 test('CreateOrderUseCase: should return existing order if idempotency key is reused (Idempotency check)', async () => {
@@ -71,5 +72,7 @@ test('CreateOrderUseCase: should return existing order if idempotency key is reu
   const firstCall = await createOrderUseCase.execute(orderData);
   const secondCall = await createOrderUseCase.execute(orderData);
 
-  assert.strictEqual(secondCall.id, firstCall.id);
+  assert.strictEqual(firstCall.created, true);
+  assert.strictEqual(secondCall.created, false);
+  assert.strictEqual(secondCall.order.id, firstCall.order.id);
 });
