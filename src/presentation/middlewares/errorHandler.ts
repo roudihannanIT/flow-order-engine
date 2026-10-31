@@ -11,6 +11,15 @@ export const errorHandler = (
     return res.status(err.statusCode).json({
       success: false,
       message: err.message,
+      ...(err.details ? { errors: err.details } : {}),
+    });
+  }
+
+  // Malformed JSON body: thrown by express.json() and it is the client's fault, not ours
+  if ((err as { type?: string }).type === 'entity.parse.failed') {
+    return res.status(400).json({
+      success: false,
+      message: 'Malformed JSON body',
     });
   }
 
