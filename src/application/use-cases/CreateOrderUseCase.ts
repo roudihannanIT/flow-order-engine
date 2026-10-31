@@ -1,5 +1,6 @@
 import { IOrderRepository, CreateOrderDTO } from '../../domain/repositories/IOrderRepository.js';
 import { Order } from '@prisma/client';
+import { DuplicateIdempotencyKeyError } from '../../domain/errors/DuplicateIdempotencyKeyError.js';
 
 export interface CreateOrderResult {
   order: Order;
@@ -24,11 +25,21 @@ export class CreateOrderUseCase {
       return sum + item.price * item.quantity;
     }, 0);
 
-    const newOrder = await this.orderRepository.create({
-      ...data,
-      totalAmount: calculatedTotal,
-    });
-
-    return { order: newOrder, created: true };
+    try {
+      const newOrder = await this.orderRepository.create({
+        ...data,
+        totalAmount: calculatedTotal,
+      });
+      return { order: newOrder, created: true };
+    } catch (error) {
+      // A concurrent request with the same key inserted first: treat this one as an idempotent replay
+      if (error instanceof DuplicateIdempotencyKeyError) {
+        const winner = await this.orderRepository.findByIdempotencyKey(data.idempotencyKey);
+        if (winner) {
+          return { order: winner, created: false };
+        }
+      }
+      throw error;
+    }
   }
 }
