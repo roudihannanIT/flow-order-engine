@@ -1,12 +1,13 @@
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import { errorHandler } from './presentation/middlewares/errorHandler.js';
-import { AppError } from './shared/errors/AppError.js';
 import { prisma } from './infrastructure/database/prismaClient.js';
 import { redisClient } from './infrastructure/cache/redisCache.js';
 import { rabbitMQClient } from './infrastructure/messaging/rabbitmqClient.js';
 import { orderRoutes } from './presentation/routes/orderRoutes.js';
 import { OrderConsumer } from './infrastructure/messaging/OrderConsumer.js';
+import { runHealthChecks } from './shared/health/runHealthChecks.js';
+import { withTimeout } from './shared/utils/withTimeout.js';
 
 dotenv.config();
 
@@ -18,43 +19,50 @@ app.use(express.json());
 // API Routes
 app.use('/api/v1/orders', orderRoutes);
 
-// Health Check Route
-app.get('/health', async (_req: Request, res: Response, next) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    const redisStatus = redisClient.status;
+const checkDatabase = async (): Promise<void> => {
+  await prisma.$queryRaw`SELECT 1`;
+};
 
-    res.status(200).json({ 
-      status: 'OK', 
-      message: 'FlowOrder Engine is running',
-      database: 'Connected successfully',
-      redis: redisStatus === 'ready' ? 'Connected successfully' : `Status: ${redisStatus}`,
-      rabbitmq: 'Connected successfully'
-    });
-  } catch (error) {
-    next(new AppError('Infrastructure connection failed', 500));
-  }
+// Health Check Route: reports the real state of every dependency (503 if any is down)
+app.get('/health', async (_req: Request, res: Response) => {
+  const report = await runHealthChecks({
+    database: checkDatabase,
+    redis: async () => {
+      // Checking the status first avoids queueing commands while Redis is unreachable
+      if (redisClient.status !== 'ready') throw new Error(`Redis status: ${redisClient.status}`);
+      await redisClient.ping();
+    },
+    rabbitmq: async () => {
+      if (!rabbitMQClient.isConnected()) throw new Error('RabbitMQ is not connected');
+    },
+  });
+
+  res.status(report.status === 'ok' ? 200 : 503).json(report);
 });
 
 // Error Handling Middleware
 app.use(errorHandler);
 
-app.listen(PORT, async () => {
+const startServer = async (): Promise<void> => {
   try {
-    await prisma.$connect();
+    // Fail fast: do not accept traffic unless every dependency is reachable
+    await withTimeout(checkDatabase(), 5000, 'Database');
     console.log('Database connected successfully');
-  } catch (error) {
-    console.error('Failed to connect to database:', error);
-  }
 
-  try {
+    await withTimeout(redisClient.ping(), 5000, 'Redis');
+
     await rabbitMQClient.connect();
 
-    // Activating the consumer to listen for events as soon as the RabbitMQ connection is successfully established
+    // Activating the consumer as soon as the RabbitMQ connection is established
     await OrderConsumer.consumeOrderCreated();
-  } catch (error) {
-    console.error('Failed to initialize RabbitMQ during startup:', error);
-  }
 
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+    app.listen(PORT, () => {
+      console.log(`Server is running on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error('Failed to start the application:', error);
+    process.exit(1);
+  }
+};
+
+startServer();

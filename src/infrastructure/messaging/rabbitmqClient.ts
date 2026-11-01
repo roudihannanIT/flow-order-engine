@@ -21,22 +21,27 @@ class RabbitMQClient {
     this.url = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
   }
 
-  public async connect(retries = 5, delay = 3000): Promise<void> {
+    public async connect(retries = 5, delay = 3000): Promise<void> {
     for (let i = 1; i <= retries; i++) {
       try {
         this.connection = await amqp.connect(this.url);
+
+        // Without an 'error' listener Node treats the emitted error as unhandled and crashes the process
+        this.connection.on('error', (error: unknown) => {
+          console.error('RabbitMQ connection error:', error);
+        });
+        this.connection.on('close', (error: unknown) => {
+          console.error('RabbitMQ connection closed:', error);
+          this.channel = null;
+          this.connection = null;
+        });
+
         this.channel = await this.connection.createChannel();
 
         console.log('Connected to RabbitMQ successfully');
 
         // Configuring the DLQ and Main Queues
         await this.setupExchangesAndQueues();
-
-        this.connection.on('close', (error: unknown) => {
-          console.error('RabbitMQ connection closed:', error);
-          this.channel = null;
-          this.connection = null;
-        });
         return;
       } catch (error) {
         console.warn(`Attempt ${i}/${retries} failed to connect to RabbitMQ. Retrying in ${delay / 1000}s...`);
@@ -74,6 +79,10 @@ class RabbitMQClient {
     await this.channel.bindQueue(this.MAIN_QUEUE, this.MAIN_EXCHANGE, this.ROUTING_KEY);
 
     console.log('RabbitMQ Exchanges and Queues (including DLQ) setup completed.');
+  }
+
+  public isConnected(): boolean {
+    return this.connection !== null && this.channel !== null;
   }
 
   public getChannel(): amqp.Channel {
