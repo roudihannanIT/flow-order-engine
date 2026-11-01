@@ -111,3 +111,30 @@ test('CreateOrderUseCase: should treat a concurrent duplicate as an idempotent r
   assert.strictEqual(created, false);
   assert.strictEqual(order.id, 'winner-order');
 });
+
+test('CreateOrderUseCase: computes the total exactly (no floating point drift)', async () => {
+  let capturedTotal: number | undefined;
+
+  const repository: IOrderRepository = {
+    findByIdempotencyKey: async () => null,
+    create: async (data) => {
+      capturedTotal = data.totalAmount;
+      return { id: 'order-1', ...data, status: OrderStatus.PENDING, version: 1 } as any;
+    },
+    findById: async () => null,
+    updateStatus: async () => {
+      throw new Error('not used');
+    },
+  };
+
+  const useCase = new CreateOrderUseCase(repository);
+  await useCase.execute({
+    customerId: 'cust_money',
+    idempotencyKey: 'key-money-1',
+    totalAmount: 0,
+    // Naive JS arithmetic gives 0.1 * 3 = 0.30000000000000004
+    items: [{ productId: 'prod_1', quantity: 3, price: 0.1 }],
+  });
+
+  assert.strictEqual(capturedTotal, 0.3);
+});
