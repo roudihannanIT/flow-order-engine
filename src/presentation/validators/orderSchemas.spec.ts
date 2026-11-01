@@ -48,3 +48,8 @@ test('createOrderSchema: rejects unknown fields (mass assignment protection)', (
 test('createOrderSchema: rejects a short idempotency key', () => {
   assert.strictEqual(createOrderSchema.safeParse({ ...validBody, idempotencyKey: 'x' }).success, false);
 });
+
+test('createOrderSchema: rejects a price with more than 2 decimal places', () => {
+  const body = { ...validBody, items: [{ productId: 'prod_1', quantity: 1, price: 9.999 }] };
+  assert.strictEqual(createOrderSchema.safeParse(body).success, false);
+});

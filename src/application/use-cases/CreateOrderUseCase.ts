@@ -1,6 +1,7 @@
 import { IOrderRepository, CreateOrderDTO } from '../../domain/repositories/IOrderRepository.js';
 import { Order } from '@prisma/client';
 import { DuplicateIdempotencyKeyError } from '../../domain/errors/DuplicateIdempotencyKeyError.js';
+import { toCents, fromCents } from '../../domain/money.js';
 
 export interface CreateOrderResult {
   order: Order;
@@ -20,10 +21,11 @@ export class CreateOrderUseCase {
       return { order: existingOrder, created: false };
     }
 
-    // Calculating the grand total from the items instead of trusting the client
-    const calculatedTotal = data.items.reduce((sum, item) => {
-      return sum + item.price * item.quantity;
+    // 
+    const totalInCents = data.items.reduce((sum, item) => {
+      return sum + toCents(item.price) * item.quantity;
     }, 0);
+    const calculatedTotal = fromCents(totalInCents);
 
     try {
       const newOrder = await this.orderRepository.create({
