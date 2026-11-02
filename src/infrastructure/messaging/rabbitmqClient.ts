@@ -3,10 +3,17 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 class RabbitMQClient {
   private connection: amqp.ChannelModel | null = null;
   private channel: amqp.Channel | null = null;
   private readonly url: string;
+
+  private shuttingDown = false;
+  private reconnecting = false;
+  // Callbacks that run after every successful (re)connection, e.g. to restart consumers
+  private readyListeners: Array<() => Promise<void>> = [];
 
   // Definition of the main Exchanges, Queues, and DLQ names
   public readonly MAIN_EXCHANGE = 'order_events';
@@ -21,36 +28,115 @@ class RabbitMQClient {
     this.url = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
   }
 
-    public async connect(retries = 5, delay = 3000): Promise<void> {
-    for (let i = 1; i <= retries; i++) {
+  // Registers a callback that runs after the initial connection and after every automatic reconnection
+  public onReady(listener: () => Promise<void>): void {
+    this.readyListeners.push(listener);
+  }
+
+  public async connect(retries = 5, delay = 3000): Promise<void> {
+    try {
+      await this.openConnection(retries, delay);
+    } catch (error) {
+      console.error('Failed to connect to RabbitMQ after maximum retries.');
+      throw error;
+    }
+    await this.notifyReady();
+  }
+
+  private async openConnection(retries: number, delay: number): Promise<void> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        this.connection = await amqp.connect(this.url);
+        const connection = await amqp.connect(this.url);
+        this.connection = connection;
 
         // Without an 'error' listener Node treats the emitted error as unhandled and crashes the process
-        this.connection.on('error', (error: unknown) => {
+        connection.on('error', (error: unknown) => {
           console.error('RabbitMQ connection error:', error);
         });
-        this.connection.on('close', (error: unknown) => {
-          console.error('RabbitMQ connection closed:', error);
+
+        connection.on('close', (error?: unknown) => {
+          // Ignore events of a connection we already replaced or discarded
+          if (this.connection !== connection) return;
+
           this.channel = null;
           this.connection = null;
+          if (this.shuttingDown) return;
+
+          console.error('RabbitMQ connection lost:', error);
+          void this.reconnect();
         });
 
-        this.channel = await this.connection.createChannel();
+        const channel = await connection.createChannel();
 
+        channel.on('error', (error: unknown) => {
+          console.error('RabbitMQ channel error:', error);
+        });
+
+        channel.on('close', () => {
+          // A channel that dies on its own leaves a half-working client: drop the whole connection
+          // so the reconnect logic rebuilds everything from scratch
+          if (!this.shuttingDown && this.channel === channel) {
+            connection.close().catch(() => {});
+          }
+        });
+
+        this.channel = channel;
         console.log('Connected to RabbitMQ successfully');
 
         // Configuring the DLQ and Main Queues
         await this.setupExchangesAndQueues();
         return;
       } catch (error) {
-        console.warn(`Attempt ${i}/${retries} failed to connect to RabbitMQ. Retrying in ${delay / 1000}s...`);
-        if (i === retries) {
-          console.error('Failed to connect to RabbitMQ after maximum retries.');
-          throw error;
-        }
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        await this.discardConnection();
+        if (attempt === retries) throw error;
+        console.warn(`Attempt ${attempt}/${retries} failed to connect to RabbitMQ. Retrying in ${delay / 1000}s...`);
+        await sleep(delay);
       }
+    }
+  }
+
+  // Reconnects in the background with exponential backoff (2s, 4s, 8s ... capped at 30s)
+  private async reconnect(): Promise<void> {
+    if (this.reconnecting || this.shuttingDown) return;
+    this.reconnecting = true;
+
+    for (let attempt = 1; !this.shuttingDown; attempt++) {
+      const wait = Math.min(1000 * 2 ** attempt, 30000);
+      console.warn(`RabbitMQ reconnect attempt ${attempt} in ${wait / 1000}s...`);
+      await sleep(wait);
+      if (this.shuttingDown) break;
+
+      try {
+        await this.openConnection(1, 0);
+        await this.notifyReady();
+        console.log('RabbitMQ reconnected successfully');
+        break;
+      } catch (error) {
+        console.error('RabbitMQ reconnect attempt failed:', error);
+        await this.discardConnection();
+      }
+    }
+
+    this.reconnecting = false;
+  }
+
+  private async notifyReady(): Promise<void> {
+    for (const listener of this.readyListeners) {
+      await listener();
+    }
+  }
+
+  // Drops the current connection without triggering the reconnect logic
+  private async discardConnection(): Promise<void> {
+    const connection = this.connection;
+    this.channel = null;
+    this.connection = null;
+
+    if (!connection) return;
+    try {
+      await connection.close();
+    } catch {
+      // Already closed
     }
   }
 
@@ -93,13 +179,17 @@ class RabbitMQClient {
   }
 
   public async close(): Promise<void> {
+    // Must be set first: it stops the automatic reconnection
+    this.shuttingDown = true;
+
     try {
       if (this.channel) await this.channel.close();
-      if (this.connection) await this.connection.close();
-      console.log('RabbitMQ connection closed gracefully');
     } catch (error) {
-      console.error('Error closing RabbitMQ connection:', error);
+      console.error('Error closing RabbitMQ channel:', error);
     }
+
+    await this.discardConnection();
+    console.log('RabbitMQ connection closed gracefully');
   }
 }
 
