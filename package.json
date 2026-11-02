@@ -4,7 +4,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "tsx --test src/application/use-cases/CreateOrderUseCase.spec.ts src/presentation/validators/orderSchemas.spec.ts src/domain/money.spec.ts src/shared/health/runHealthChecks.spec.ts",
+    "test": "tsx --test src/application/use-cases/CreateOrderUseCase.spec.ts src/presentation/validators/orderSchemas.spec.ts src/domain/money.spec.ts src/shared/health/runHealthChecks.spec.ts src/shared/shutdown/runShutdownSteps.spec.ts",
     "build": "rimraf dist && tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts"

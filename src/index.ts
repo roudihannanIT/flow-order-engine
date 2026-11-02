@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import type { Server } from 'node:http';
 import dotenv from 'dotenv';
 import { errorHandler } from './presentation/middlewares/errorHandler.js';
 import { prisma } from './infrastructure/database/prismaClient.js';
@@ -7,6 +8,7 @@ import { rabbitMQClient } from './infrastructure/messaging/rabbitmqClient.js';
 import { orderRoutes } from './presentation/routes/orderRoutes.js';
 import { OrderConsumer } from './infrastructure/messaging/OrderConsumer.js';
 import { runHealthChecks } from './shared/health/runHealthChecks.js';
+import { runShutdownSteps } from './shared/shutdown/runShutdownSteps.js';
 import { withTimeout } from './shared/utils/withTimeout.js';
 
 dotenv.config();
@@ -43,6 +45,49 @@ app.get('/health', async (_req: Request, res: Response) => {
 // Error Handling Middleware
 app.use(errorHandler);
 
+let server: Server | undefined;
+
+const closeHttpServer = (): Promise<void> =>
+  new Promise((resolve, reject) => {
+    if (!server) return resolve();
+    // Stops accepting new connections and waits for in-flight requests to finish
+    server.close((error) => (error ? reject(error) : resolve()));
+    server.closeIdleConnections();
+  });
+
+let isShuttingDown = false;
+
+const shutdown = async (signal: string): Promise<void> => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`${signal} received. Shutting down gracefully...`);
+
+  // Safety net: never hang forever if something refuses to stop
+  setTimeout(() => {
+    console.error('Graceful shutdown timed out. Forcing exit.');
+    process.exit(1);
+  }, 15000).unref();
+
+  // The order matters: stop taking new work first, release the dependencies last
+  await runShutdownSteps([
+    { name: 'HTTP server', run: closeHttpServer },
+    { name: 'order consumer', run: () => OrderConsumer.stop() },
+    { name: 'RabbitMQ', run: () => rabbitMQClient.close() },
+    {
+      name: 'Redis',
+      run: async () => {
+        await redisClient.quit();
+      },
+    },
+    { name: 'Database', run: () => prisma.$disconnect() },
+  ]);
+
+  process.exit(0);
+};
+
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+
 const startServer = async (): Promise<void> => {
   try {
     // Fail fast: do not accept traffic unless every dependency is reachable
@@ -51,12 +96,11 @@ const startServer = async (): Promise<void> => {
 
     await withTimeout(redisClient.ping(), 5000, 'Redis');
 
+    // The consumer is (re)started after the first connection and after every automatic reconnection
+    rabbitMQClient.onReady(() => OrderConsumer.consumeOrderCreated());
     await rabbitMQClient.connect();
 
-    // Activating the consumer as soon as the RabbitMQ connection is established
-    await OrderConsumer.consumeOrderCreated();
-
-    app.listen(PORT, () => {
+    server = app.listen(PORT, () => {
       console.log(`Server is running on http://localhost:${PORT}`);
     });
   } catch (error) {
