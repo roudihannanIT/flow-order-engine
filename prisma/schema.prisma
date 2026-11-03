@@ -25,7 +25,6 @@ model Order {
   updatedAt      DateTime    @updatedAt
   items          OrderItem[]
 
-  @@index([idempotencyKey])
   @@index([customerId])
 }
 
@@ -36,4 +35,6 @@ model OrderItem {
   quantity  Int
   price     Decimal @db.Decimal(10, 2)
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
 }
