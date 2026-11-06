@@ -1,4 +1,8 @@
-export const withTimeout = <T>(promise: Promise<T>, ms: number, label = 'operation'): Promise<T> => {
+export const withTimeout = <T>(
+  promise: Promise<T>,
+  ms: number,
+  label = 'operation',
+): Promise<T> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const timeout = new Promise<never>((_, reject) => {

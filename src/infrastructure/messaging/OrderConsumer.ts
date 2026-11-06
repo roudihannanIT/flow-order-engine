@@ -10,7 +10,10 @@ const settle = (action: () => void): void => {
   try {
     action();
   } catch (error) {
-    console.warn('Could not ack/nack the message (channel closed). RabbitMQ will redeliver it:', error);
+    console.warn(
+      'Could not ack/nack the message (channel closed). RabbitMQ will redeliver it:',
+      error,
+    );
   }
 };
 
@@ -36,7 +39,9 @@ export class OrderConsumer {
         OrderConsumer.inFlight++;
         try {
           const eventContent = JSON.parse(msg.content.toString());
-          console.log(`Received [${eventContent.event}] event for order ID: ${eventContent.data?.id}`);
+          console.log(
+            `Received [${eventContent.event}] event for order ID: ${eventContent.data?.id}`,
+          );
 
           const orderId = eventContent.data?.id;
           const currentVersion = eventContent.data?.version;
@@ -60,7 +65,7 @@ export class OrderConsumer {
           OrderConsumer.inFlight--;
         }
       },
-      { noAck: false }
+      { noAck: false },
     );
 
     OrderConsumer.consumerTag = consumerTag;
@@ -81,7 +86,9 @@ export class OrderConsumer {
     }
 
     if (OrderConsumer.inFlight > 0) {
-      console.warn(`${OrderConsumer.inFlight} message(s) still in flight. RabbitMQ will redeliver them.`);
+      console.warn(
+        `${OrderConsumer.inFlight} message(s) still in flight. RabbitMQ will redeliver them.`,
+      );
     }
   }
 }

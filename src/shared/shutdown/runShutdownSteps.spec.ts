@@ -45,7 +45,7 @@ test('runShutdownSteps: does not wait forever for a step that hangs', async () =
       { name: 'stuck', run: () => new Promise<void>(() => {}) },
       { name: 'database', run: async () => void order.push('database') },
     ],
-    50
+    50,
   );
 
   assert.deepStrictEqual(order, ['database']);

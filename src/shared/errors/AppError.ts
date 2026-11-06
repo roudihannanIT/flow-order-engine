@@ -7,7 +7,7 @@ export class AppError extends Error {
     message: string,
     statusCode: number = 400,
     isOperational: boolean = true,
-    details?: unknown
+    details?: unknown,
   ) {
     super(message);
     this.statusCode = statusCode;

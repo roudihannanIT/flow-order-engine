@@ -23,15 +23,15 @@ class MockOrderRepository implements IOrderRepository {
   }
 
   async findByIdempotencyKey(key: string): Promise<any | null> {
-    return this.orders.find(o => o.idempotencyKey === key) || null;
+    return this.orders.find((o) => o.idempotencyKey === key) || null;
   }
 
   async findById(id: string): Promise<any | null> {
-    return this.orders.find(o => o.id === id) || null;
+    return this.orders.find((o) => o.id === id) || null;
   }
 
   async updateStatus(id: string, status: any, _version: number): Promise<any> {
-    const order = this.orders.find(o => o.id === id);
+    const order = this.orders.find((o) => o.id === id);
     if (!order) throw new Error('Order not found');
     order.status = status;
     order.version += 1;

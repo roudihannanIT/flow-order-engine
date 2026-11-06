@@ -8,7 +8,7 @@ const createOrderUseCase = new CreateOrderUseCase(orderRepository);
 
 export class OrderController {
   public static async create(req: Request, res: Response, next: NextFunction): Promise<void> {
-        try {
+    try {
       const { customerId, idempotencyKey, items } = req.body;
 
       const { order, created } = await createOrderUseCase.execute({
