@@ -30,7 +30,7 @@ class MockOrderRepository implements IOrderRepository {
     return this.orders.find(o => o.id === id) || null;
   }
 
-  async updateStatus(id: string, status: any, version: number): Promise<any> {
+  async updateStatus(id: string, status: any, _version: number): Promise<any> {
     const order = this.orders.find(o => o.id === id);
     if (!order) throw new Error('Order not found');
     order.status = status;

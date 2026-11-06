@@ -1,9 +1,10 @@
 import { rabbitMQClient } from './rabbitmqClient.js';
+import { Order } from '@prisma/client';
 
 export class OrderEventPublisher {
   private static readonly EXCHANGE_NAME = 'order_events';
 
-  public static async publishOrderCreated(order: any): Promise<void> {
+  public static async publishOrderCreated(order: Order): Promise<void> {
     try {
       const channel = rabbitMQClient.getChannel();
       
