@@ -10,7 +10,7 @@ export interface HealthReport {
 // Runs every check in parallel. A check that throws or exceeds the timeout is reported as "down".
 export async function runHealthChecks(
   checks: Record<string, HealthCheck>,
-  timeoutMs = 2000
+  timeoutMs = 2000,
 ): Promise<HealthReport> {
   const entries = await Promise.all(
     Object.entries(checks).map(async ([name, check]): Promise<[string, 'up' | 'down']> => {
@@ -20,7 +20,7 @@ export async function runHealthChecks(
       } catch {
         return [name, 'down'];
       }
-    })
+    }),
   );
 
   return {

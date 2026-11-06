@@ -7,16 +7,18 @@ export class OrderEventPublisher {
   public static async publishOrderCreated(order: Order): Promise<void> {
     try {
       const channel = rabbitMQClient.getChannel();
-      
+
       // Ensure that the Exchange is created as either a 'fanout' or 'topic' type.
-      await channel.assertExchange(this. EXCHANGE_NAME, 'topic', { durable: true });
+      await channel.assertExchange(this.EXCHANGE_NAME, 'topic', { durable: true });
 
       const routingKey = 'order.created';
-      const payload = Buffer.from(JSON.stringify({
-        event: 'OrderCreated',
-        timestamp: new Date().toISOString(),
-        data: order,
-      }));
+      const payload = Buffer.from(
+        JSON.stringify({
+          event: 'OrderCreated',
+          timestamp: new Date().toISOString(),
+          data: order,
+        }),
+      );
 
       channel.publish(this.EXCHANGE_NAME, routingKey, payload, { persistent: true });
       console.log(`Published [OrderCreated] event for order ID: ${order.id}`);

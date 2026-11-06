@@ -27,10 +27,7 @@ test('runHealthChecks: reports degraded when a dependency throws', async () => {
 });
 
 test('runHealthChecks: treats a check that never settles as down (timeout)', async () => {
-  const report = await runHealthChecks(
-    { redis: () => new Promise<void>(() => {}) },
-    50
-  );
+  const report = await runHealthChecks({ redis: () => new Promise<void>(() => {}) }, 50);
 
   assert.strictEqual(report.status, 'degraded');
   assert.strictEqual(report.checks.redis, 'down');

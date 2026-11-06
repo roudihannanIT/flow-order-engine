@@ -21,7 +21,7 @@ export class CreateOrderUseCase {
       return { order: existingOrder, created: false };
     }
 
-    // 
+    //
     const totalInCents = data.items.reduce((sum, item) => {
       return sum + toCents(item.price) * item.quantity;
     }, 0);

@@ -4,7 +4,7 @@ import { prisma } from '../database/prismaClient.js';
 import { DuplicateIdempotencyKeyError } from '../../domain/errors/DuplicateIdempotencyKeyError.js';
 
 export class PrismaOrderRepository implements IOrderRepository {
-    async create(data: CreateOrderDTO): Promise<Order> {
+  async create(data: CreateOrderDTO): Promise<Order> {
     try {
       return await prisma.order.create({
         data: {
@@ -56,7 +56,9 @@ export class PrismaOrderRepository implements IOrderRepository {
     });
 
     if (updated.count === 0) {
-      throw new Error('Concurrency conflict: Order was modified or processed by another transaction.');
+      throw new Error(
+        'Concurrency conflict: Order was modified or processed by another transaction.',
+      );
     }
 
     const order = await this.findById(id);

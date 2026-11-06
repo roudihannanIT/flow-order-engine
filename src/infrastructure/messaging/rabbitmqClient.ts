@@ -89,7 +89,9 @@ class RabbitMQClient {
       } catch (error) {
         await this.discardConnection();
         if (attempt === retries) throw error;
-        console.warn(`Attempt ${attempt}/${retries} failed to connect to RabbitMQ. Retrying in ${delay / 1000}s...`);
+        console.warn(
+          `Attempt ${attempt}/${retries} failed to connect to RabbitMQ. Retrying in ${delay / 1000}s...`,
+        );
         await sleep(delay);
       }
     }
